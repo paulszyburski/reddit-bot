@@ -1,3 +1,7 @@
+import time
+from urllib.parse import urljoin
+from selenium.common.exceptions import TimeoutException
+from reddit.browser import find_all, text_of, wait_element
 import hashlib
 import json
 
@@ -36,126 +40,32 @@ def mark_notification_handled(path, key):
 
 
 def scrape_notifications(page, max_scrolls=5):
-    """
-    Opens Reddit notifications and scrapes the notifications currently available.
-
-    Args:
-        page: Playwright Page object. Must already be logged into Reddit.
-        max_scrolls: How many times to scroll down to load older notifications.
-
-    Returns:
-        list[dict]
-    """
-
-    page.goto(
-        "https://www.reddit.com/notifications",
-        wait_until="domcontentloaded"
-    )
-
-    # Give Reddit's JS a moment to render notifications
+    """Open Reddit notifications and return visible notification metadata."""
+    page.get("https://www.reddit.com/notifications")
     try:
-        page.locator("notification-item").first.wait_for(
-            state="attached",
-            timeout=10_000
-        )
-    except Exception:
-        # Could simply mean there are no notifications
+        wait_element(page, "notification-item", visible_only=False)
+    except TimeoutException:
         pass
-
-    # Load some older notifications
     previous_count = 0
-
     for _ in range(max_scrolls):
-        notifications = page.locator("notification-item")
-        current_count = notifications.count()
-
+        current_count = len(find_all(page, "notification-item"))
         if current_count == previous_count and current_count > 0:
             break
-
         previous_count = current_count
-
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        page.wait_for_timeout(1500)
-
-    notifications = page.locator("notification-item")
+        page.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+        time.sleep(1.5)
 
     results = []
-
-    for i in range(notifications.count()):
-        notification = notifications.nth(i)
-
-        # -------------------------
-        # Full visible notification text
-        # -------------------------
-        try:
-            text = notification.inner_text().strip()
-        except Exception:
-            text = ""
-
-        # -------------------------
-        # Find relevant link
-        # -------------------------
-        href = ""
-
-        links = notification.locator("a[href]")
-
-        for j in range(links.count()):
-            try:
-                candidate = links.nth(j).get_attribute("href")
-
-                if not candidate:
-                    continue
-
-                # Prefer actual Reddit post/comment links
-                if "/comments/" in candidate:
-                    href = candidate
-                    break
-
-                if not href:
-                    href = candidate
-
-            except Exception:
-                pass
-
-        if href and href.startswith("/"):
-            href = "https://www.reddit.com" + href
-
-        # -------------------------
-        # Timestamp
-        # -------------------------
-        timestamp = ""
-
-        time_element = notification.locator("time").first
-
-        if time_element.count():
-            try:
-                timestamp = (
-                    time_element.get_attribute("datetime")
-                    or time_element.inner_text().strip()
-                )
-            except Exception:
-                pass
-
-        # -------------------------
-        # Username
-        # -------------------------
-        username = ""
-
-        user_link = notification.locator(
-            "a[href*='/user/'], a[href*='/u/']"
-        ).first
-
-        if user_link.count():
-            try:
-                username = user_link.inner_text().strip()
-            except Exception:
-                pass
-
+    for notification in find_all(page, "notification-item"):
+        links = [link.get_attribute("href") for link in find_all(notification, "a[href]")]
+        links = [link for link in links if link]
+        href = next((link for link in links if "/comments/" in link), links[0] if links else "")
+        times = find_all(notification, "time")
+        timestamp = (times[0].get_attribute("datetime") or times[0].text.strip()) if times else ""
         results.append({
-            "text": text,
-            "username": username,
+            "text": notification.text.strip(),
+            "username": text_of(notification, "a[href*='/user/'], a[href*='/u/']"),
             "timestamp": timestamp,
-            "href": href
+            "href": urljoin("https://www.reddit.com", href) if href else "",
         })
-
     return results

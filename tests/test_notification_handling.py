@@ -36,6 +36,8 @@ class NotificationHandlingTests(unittest.TestCase):
             ("CONTACTED_NOTIFICATIONS_PATH", self.history),
             ("ONGOING_PATH", self.ongoing),
             ("generate_response", self.ai),
+            ("wait_element", Mock()),
+            ("time", Mock()),
             ("scrape_post", Mock(side_effect=lambda page: copy.deepcopy(self.post))),
         ]:
             patcher = patch.object(conversations, name, value)
@@ -94,3 +96,35 @@ class NotificationHandlingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SeleniumReplyTests(unittest.TestCase):
+    def test_reply_uses_new_editor_and_requested_comment(self):
+        from reddit.conversations import utils
+        comment = Mock()
+        nested_comment = Mock()
+        nested_button = Mock()
+        button = Mock()
+        button.accessible_name = "Reply"
+        page = Mock()
+        page.execute_script.side_effect = [nested_comment, comment]
+        old_editor = Mock(id="search")
+        new_editor = Mock(id="reply")
+
+        def find(scope, selector):
+            if selector == 'button, [role="button"]':
+                return [nested_button, button]
+            if scope is comment:
+                return [new_editor]
+            return [old_editor]
+
+        with patch.object(utils, "_find_reddit_comment", return_value=comment) as lookup, \
+             patch.object(utils, "find_all", side_effect=find), \
+             patch.object(utils, "click_element") as click, \
+             patch.object(utils, "fill_editor") as fill, \
+             patch.object(utils, "_submit_editor") as submit:
+            utils._post_reply(page, "t1_target", "Hello")
+        lookup.assert_called_once_with(page, "t1_target")
+        click.assert_called_once_with(button)
+        fill.assert_called_once_with(new_editor, "Hello")
+        submit.assert_called_once_with(page, new_editor)

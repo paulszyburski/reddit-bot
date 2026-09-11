@@ -1,9 +1,15 @@
-from playwright.sync_api import sync_playwright
+"""Manual Selenium login check: python test.py."""
+from reddit.browser import create_driver
 
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=False)
-    page = browser.new_page()
 
-    page.goto("https://reddit.com")
+def main():
+    driver = create_driver()
+    try:
+        driver.get("https://reddit.com")
+        input("Try logging in MANUALLY and press Enter afterwards...")
+    finally:
+        driver.quit()
 
-    input("Try logging in MANUALLY and press Enter afterwards...")
+
+if __name__ == "__main__":
+    main()
