@@ -59,9 +59,11 @@ class SeleniumBrowserTests(unittest.TestCase):
         self.assertEqual(result["comments"][0]["replies"][0]["id"], "t1_b")
 
     def test_driver_creation_configures_selenium(self):
-        with patch.object(browser.webdriver, "Chrome") as chrome:
+        with patch.object(browser.webdriver, "Chrome") as chrome, \
+             patch.object(browser, "chromium_binary", return_value="/usr/bin/chromium"):
             browser.create_driver(headless=True)
         options = chrome.call_args.kwargs["options"]
+        self.assertEqual(options.binary_location, "/usr/bin/chromium")
         self.assertEqual(options.page_load_strategy, "eager")
         self.assertIn("--headless=new", options.arguments)
 

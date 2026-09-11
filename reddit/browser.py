@@ -1,12 +1,46 @@
 """Selenium setup and element helpers for Reddit's web components."""
+import os
+from pathlib import Path
+import shutil
+
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
 
+def chromium_binary():
+    load_dotenv()
+    configured = os.getenv("CHROMIUM_BINARY")
+    if configured:
+        path = Path(configured).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+        raise RuntimeError(f"CHROMIUM_BINARY is not an executable file: {path}")
+
+    for name in ("chromium", "chromium-browser"):
+        path = shutil.which(name)
+        if path:
+            return path
+
+    # Reuse an existing Chromium download without requiring its old tooling.
+    cache = Path.home() / ".cache" / "ms-playwright"
+    candidates = sorted(
+        cache.glob("chromium-*/chrome-linux*/chrome"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates:
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    raise RuntimeError("Chromium was not found. Install Chromium or set CHROMIUM_BINARY in .env to its executable path.")
+
+
 def create_driver(headless=False):
     options = webdriver.ChromeOptions()
+    # Chromium uses Selenium's Chrome driver, with an explicit browser binary.
+    options.binary_location = chromium_binary()
     options.page_load_strategy = "eager"
     if headless:
         options.add_argument("--headless=new")
