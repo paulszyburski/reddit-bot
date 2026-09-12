@@ -1,5 +1,3 @@
-import time
-from reddit.browser import wait_element
 import json
 import uuid
 from datetime import datetime, timezone
@@ -628,21 +626,32 @@ def execute_conversations(page, conversations=None):
         print(destination)
 
         try:
-            page.get(destination)
+            page.goto(destination, wait_until="domcontentloaded")
 
-            wait_element(page, "shreddit-post", timeout=15.0, visible_only=False)
+            page.locator("shreddit-post").first.wait_for(
+                state="attached",
+                timeout=15000
+            )
 
-            time.sleep(1.0)
+            page.wait_for_timeout(1000)
 
             if action == "reply":
                 try:
-                    wait_element(page, "shreddit-comment", timeout=10.0, visible_only=False)
+                    page.locator("shreddit-comment").first.wait_for(
+                        state="attached",
+                        timeout=10000
+                    )
                 except Exception:
                     pass
 
             elif action == "comment":
                 try:
-                    wait_element(page, 'faceplate-textarea-input[data-testid="trigger-button"]', timeout=10.0, visible_only=False)
+                    page.locator(
+                        'faceplate-textarea-input[data-testid="trigger-button"]'
+                    ).first.wait_for(
+                        state="attached",
+                        timeout=10000
+                    )
                 except Exception:
                     pass
 
@@ -656,8 +665,8 @@ def execute_conversations(page, conversations=None):
 
                 if _find_reddit_comment(page, reply_to) is None:
                     print("Comment not loaded on permalink. Trying main post...")
-                    page.get(href)
-                    time.sleep(1.5)
+                    page.goto(href, wait_until="domcontentloaded")
+                    page.wait_for_timeout(1500)
 
                 _post_reply(page, reply_to, content)
 
@@ -665,7 +674,7 @@ def execute_conversations(page, conversations=None):
                 print(f"Writing top-level comment to {target_username}")
                 _post_top_level_comment(page, content)
 
-            time.sleep(1.2)
+            page.wait_for_timeout(1200)
 
         except Exception as e:
             print()
@@ -767,7 +776,7 @@ def handle_conversation_reply(page, href):
 
     app = conversation["appName"]
 
-    page.get(conversation["postHref"])
+    page.goto(conversation["postHref"], wait_until="domcontentloaded")
     post = scrape_post(page)
     notification_key = notification_state_key(
         post, conversation["ourUsername"], conversation["postHref"]
@@ -1445,21 +1454,39 @@ CURRENT NOTIFICATION URL
         print(destination)
 
     try:
-        page.get(destination)
+        page.goto(
+            destination,
+            wait_until="domcontentloaded"
+        )
 
-        wait_element(page, "shreddit-post", timeout=15.0, visible_only=False)
+        page.locator(
+            "shreddit-post"
+        ).first.wait_for(
+            state="attached",
+            timeout=15000
+        )
 
-        time.sleep(1.0)
+        page.wait_for_timeout(1000)
 
         if action == "reply":
             try:
-                wait_element(page, "shreddit-comment", timeout=10.0, visible_only=False)
+                page.locator(
+                    "shreddit-comment"
+                ).first.wait_for(
+                    state="attached",
+                    timeout=10000
+                )
             except Exception:
                 pass
 
         elif action == "comment":
             try:
-                wait_element(page, 'faceplate-textarea-input[data-testid="trigger-button"]', timeout=10.0, visible_only=False)
+                page.locator(
+                    'faceplate-textarea-input[data-testid="trigger-button"]'
+                ).first.wait_for(
+                    state="attached",
+                    timeout=10000
+                )
             except Exception:
                 pass
 
@@ -1487,9 +1514,12 @@ CURRENT NOTIFICATION URL
                     "Trying main post..."
                 )
 
-                page.get(post_href)
+                page.goto(
+                    post_href,
+                    wait_until="domcontentloaded"
+                )
 
-                time.sleep(1.5)
+                page.wait_for_timeout(1500)
 
             _post_reply(
                 page,
@@ -1508,7 +1538,7 @@ CURRENT NOTIFICATION URL
                 content
             )
 
-        time.sleep(1.2)
+        page.wait_for_timeout(1200)
 
     except Exception as e:
         print()

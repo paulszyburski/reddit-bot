@@ -1,4 +1,4 @@
-from reddit.browser import create_driver
+from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -53,8 +53,14 @@ def save_posts(posts):
     return file_path
 
 def main():
-    page = create_driver()
-    try:
+    with sync_playwright() as p:
+
+        browser = p.chromium.launch(
+            headless=False
+        )
+
+        page = browser.new_page()
+
         login(page)
 
         time.sleep(2)
@@ -63,7 +69,7 @@ def main():
         for app in apps:
             for community in communities:
 
-                page.get(community)
+                page.goto(community)
 
                 time.sleep(1)
 
@@ -127,7 +133,7 @@ def main():
 
                 print(best_post)
 
-                page.get(best_post)
+                page.goto(best_post)
 
                 post_info = scrape_post(page)
 
@@ -167,8 +173,7 @@ def main():
 
             handle_conversation_reply(page, href)
             
-    finally:
-        page.quit()
+        browser.close()
 
 if __name__ == "__main__":
 

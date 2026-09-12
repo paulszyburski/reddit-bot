@@ -1,18 +1,7 @@
+from playwright.sync_api import sync_playwright
+from dotenv import load_dotenv
 import os
 import time
-
-from dotenv import load_dotenv
-from selenium.webdriver.support.ui import WebDriverWait
-
-from reddit.browser import (
-    create_driver,
-    fill_editor,
-    named_elements,
-    wait_element,
-    find_all,
-    visible,
-    click_element,
-)
 
 load_dotenv()
 
@@ -20,190 +9,115 @@ USERNAME = os.getenv("REDDIT_USERNAME")
 PASSWORD = os.getenv("REDDIT_PASSWORD")
 
 
-def is_logged_in(page):
-    """
-    Return True when Reddit appears to be logged in.
-
-    We intentionally do NOT rely on the 'Log In' link disappearing,
-    because Reddit can leave matching elements in the DOM.
-    """
-
-    # Login form should no longer be visible.
-    username_inputs = visible(
-        find_all(page, 'input[name="username"]')
-    )
-
-    password_inputs = visible(
-        find_all(page, 'input[name="password"]')
-    )
-
-    if username_inputs or password_inputs:
-        return False
-
-    # Look for UI elements normally present for a logged-in user.
-    logged_in_selectors = [
-        "#expand-user-drawer-button",
-        'button[aria-label*="user menu" i]',
-        'button[aria-label*="profile" i]',
-        '[data-testid="user-menu"]',
-    ]
-
-    for selector in logged_in_selectors:
-        try:
-            if visible(find_all(page, selector)):
-                return True
-        except Exception:
-            pass
-
-    return False
-
-
-def print_login_debug(page):
-    print("Current URL:", page.current_url)
-
-    try:
-        print("Title:", page.title)
-    except Exception:
-        pass
-
-    try:
-        username_visible = bool(
-            visible(find_all(page, 'input[name="username"]'))
-        )
-
-        print("Username field visible:", username_visible)
-    except Exception:
-        pass
-
-
 def login(page, max_attempts=10):
-
-    if not USERNAME or not PASSWORD:
-        raise RuntimeError(
-            "REDDIT_USERNAME or REDDIT_PASSWORD is missing from .env"
-        )
-
     for attempt in range(1, max_attempts + 1):
-
-        print()
         print(f"Login attempt {attempt}/{max_attempts}")
 
         try:
-            # IMPORTANT: plain URL, not Markdown.
-            page.get("https://www.reddit.com/")
-
-            # Give Reddit's JS a moment to initialize.
-            time.sleep(2)
-
-            # Maybe we're already logged in from an existing profile/session.
-            if is_logged_in(page):
-                print("Already logged in")
-                return True
-
-            print("Looking for Log In button...")
-
-            links = WebDriverWait(
-                page,
-                15,
-                poll_frequency=0.5,
-            ).until(
-                lambda _:
-                named_elements(
-                    page,
-                    'a, button, [role="link"], [role="button"]',
-                    "Log In",
-                )
-                or False
+            page.goto(
+                "https://reddit.com",
+                wait_until="domcontentloaded"
             )
 
-            print("Clicking Log In...")
-            click_element(links[0])
+            page.get_by_role(
+                "link",
+                name="Log In"
+            ).click()
 
-            # Let the login modal/dialog render.
-            time.sleep(1.5)
-
-            print("Waiting for username field...")
-
-            username_input = wait_element(
-                page,
-                'input[name="username"]',
-                timeout=15,
+            page.locator(
+                'input[name="username"]'
+            ).wait_for(
+                state="visible",
+                timeout=10000
             )
 
-            print("Entering username...")
-            fill_editor(username_input, USERNAME)
+            page.locator(
+                'input[name="username"]'
+            ).fill(USERNAME)
 
-            # Small pause helps Reddit/react state catch up.
-            time.sleep(0.5)
+            page.locator(
+                'input[name="password"]'
+            ).fill(PASSWORD)
 
-            print("Waiting for password field...")
+            page.get_by_role(
+                "button",
+                name="Log In"
+            ).click()
 
-            password_input = wait_element(
-                page,
-                'input[name="password"]',
-                timeout=15,
+            # Give Reddit some time to either log in
+            # or show the temporary error.
+            page.wait_for_timeout(2500)
+
+            # -----------------------------------------
+            # Check for Reddit error messages
+            # -----------------------------------------
+
+            error_messages = page.get_by_text(
+                "Something went wrong",
+                exact=False
             )
 
-            print("Entering password...")
-            fill_editor(password_input, PASSWORD)
+            if error_messages.count():
+                for i in range(error_messages.count()):
+                    try:
+                        if error_messages.nth(i).is_visible():
+                            print("Reddit returned 'Something went wrong'. Retrying...")
+                            break
+                    except Exception:
+                        pass
+                else:
+                    error_messages = None
 
-            time.sleep(0.8)
+                if error_messages is not None:
+                    page.wait_for_timeout(2000)
+                    continue
 
-            print("Looking for submit button...")
+            # -----------------------------------------
+            # Detect successful login
+            # -----------------------------------------
 
-            buttons = WebDriverWait(
-                page,
-                15,
-                poll_frequency=0.5,
-            ).until(
-                lambda _:
-                [
-                    button
-                    for button in named_elements(
-                        page,
-                        'button, [role="button"]',
-                        "Log In",
-                    )
-                    if button.is_enabled()
-                ]
-                or False
+            # Login dialog should disappear after success.
+            username_input = page.locator(
+                'input[name="username"]'
             )
 
-            print("Submitting login...")
-            click_element(buttons[0])
+            try:
+                still_visible = username_input.is_visible()
+            except Exception:
+                still_visible = False
 
-            # Don't immediately inspect the DOM.
-            # Reddit needs time to send the request, authenticate,
-            # update cookies and rerender.
-            time.sleep(2)
-
-            print("Waiting for Reddit to confirm login...")
-
-            logged_in = WebDriverWait(
-                page,
-                30,
-                poll_frequency=0.5,
-            ).until(
-                lambda _: is_logged_in(page)
-            )
-
-            if logged_in:
+            if not still_visible:
                 print("Logged in successfully")
-                print("URL:", page.current_url)
-
-                # Extra stabilization before the rest of the bot continues.
-                time.sleep(2)
-
                 return True
 
-        except Exception as error:
-            print(f"Login attempt failed: {type(error).__name__}: {error}")
+            # Another possible sign:
+            # login button/link disappeared.
+            login_links = page.get_by_role(
+                "link",
+                name="Log In"
+            )
 
-            print_login_debug(page)
+            visible_login_link = False
 
-        if attempt < max_attempts:
-            print("Waiting before next attempt...")
-            time.sleep(4)
+            for i in range(login_links.count()):
+                try:
+                    if login_links.nth(i).is_visible():
+                        visible_login_link = True
+                        break
+                except Exception:
+                    pass
+
+            if not visible_login_link:
+                print("Logged in successfully")
+                return True
+
+            print("Login did not complete. Retrying...")
+
+        except Exception as e:
+            print(f"Login attempt failed: {e}")
+
+        # wait before next attempt
+        time.sleep(2)
 
     raise RuntimeError(
         f"Failed to log into Reddit after {max_attempts} attempts."
@@ -211,13 +125,19 @@ def login(page, max_attempts=10):
 
 
 if __name__ == "__main__":
+    with sync_playwright() as p:
 
-    driver = create_driver()
+        browser = p.chromium.launch(
+            headless=False
+        )
 
-    try:
-        login(driver, max_attempts=20)
+        page = browser.new_page()
 
-        input("Press Enter to close the browser...")
+        login(
+            page,
+            max_attempts=20
+        )
 
-    finally:
-        driver.quit()
+        time.sleep(5000)
+
+        browser.close()
