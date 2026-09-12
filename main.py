@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import time
 import json
+from pathlib import Path
 
 from reddit.login import *
 from reddit.search import *
@@ -12,6 +13,7 @@ from reddit.posts import *
 from reddit.conversations.conversations import *
 from reddit.conversations.notifications import *
 from AI.chatgpt import *
+from AI.prompts import select_post
 
 load_dotenv()
 
@@ -38,8 +40,6 @@ communities = [
 with open("data/apps/apps.json", "r") as file:
     apps = json.load(file)
 
-with open("data/contacted_posts.txt", "r") as file:
-    contacted_posts = file.read()
 
 def save_posts(posts):
 
@@ -75,8 +75,10 @@ def main():
 
         time.sleep(2)
 
-        best_posts = []
         for app in apps:
+            best_posts = []
+            contacted_path = Path("data/contacted_posts.txt")
+            excluded_posts = set(contacted_path.read_text().splitlines()) if contacted_path.exists() else set()
             for community in communities:
 
                 page.goto(community)
@@ -87,59 +89,11 @@ def main():
 
                 print("\n\nChatGPT:")
 
-                best_post = generate_response(
-                    f"""
-    Given these Reddit posts:
-
-    {posts}
-
-    Choose exactly ONE post that gives me the best chance of finding Android testers for my own app by joining the discussion and replying to people there.
-
-    you CANNOT pick the post that has one of these hrefs:
-
-    {contacted_posts}
-
-    Prioritize posts where:
-
-    * the author explicitly says things like "I will test your app", "will test back", "test for test", "test 4 test", "happy to test yours", or similar;
-
-    * commenters are actively exchanging app tests with each other;
-
-    * the post is about Android testing, Google Play closed testing, beta testing, or finding testers;
-
-    * there are multiple active commenters who may also be potential testers;
-
-    * people are willing to stay enrolled, install apps, or reciprocate testing.
-
-    Avoid posts where:
-
-    * the author only wants feedback for their own app and does not offer reciprocal testing;
-
-    * the post is mainly about iOS, TestFlight, websites, SaaS, or non-Android products;
-
-    * the author says they cannot test Android apps;
-
-    * links are broken or the discussion is inactive;
-
-    * there is little or no evidence that I could recruit testers from the thread.
-
-    Evaluate the title, description, AND comments, not just the title.
-
-    Return ONLY the href of the single best post.
-
-    Do not explain your choice.
-
-    Do not add markdown.
-
-    Do not add quotes.
-
-    Do not output anything except the href.
-    """
-                )
-
-                # Remove accidental whitespace/newlines
-
-                best_post = best_post.strip()
+                best_post = select_post(posts, excluded_posts, generate_selection_response)
+                if best_post is None:
+                    print("No eligible post in this community.")
+                    continue
+                excluded_posts.add(best_post)
 
                 print(best_post)
 
@@ -188,6 +142,5 @@ def main():
 if __name__ == "__main__":
 
     main()
-
 
 

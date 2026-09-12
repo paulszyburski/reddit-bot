@@ -14,12 +14,12 @@ class ReplySubmitTests(unittest.TestCase):
         page.evaluate.return_value = {"width": 1200, "height": 800}
         editor = Mock()
         scope = Mock()
-        scope.locator.return_value = "scoped"
+        scope.locator.side_effect = lambda selector: "scoped" if selector == 'button[type="submit"]' else "other"
         page.get_by_role.return_value = "global"
 
         def visible(locator):
             if button is not None:
-                return [button] if locator == "global" else []
+                return [button] if locator == "scoped" else []
             return [Mock()] if page.mouse.click.called else []
 
         with patch.object(utils, "_find_composer_scope", return_value=scope), \
@@ -44,6 +44,7 @@ class ReplySubmitTests(unittest.TestCase):
         result, page = self.attempt(Mock())
         self.assertTrue(result)
         page.mouse.click.assert_not_called()
+        page.get_by_role.assert_not_called()
 
     def test_persistent_obstruction_stops_after_one_retry(self):
         button = Mock()

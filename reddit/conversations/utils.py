@@ -611,40 +611,7 @@ def _try_click_reply_submit(page, editor):
                 except Exception:
                     pass
 
-    # --------------------------------------------------------
-    # Global fallback
-    # --------------------------------------------------------
-
-    buttons = page.get_by_role(
-        "button",
-        name=re.compile(
-            r"^\s*(reply|comment)\s*$",
-            re.I
-        )
-    )
-
-    visible = []
-
-    for button in _visible_elements(
-        buttons
-    ):
-
-        try:
-
-            if button.is_enabled():
-                visible.append(button)
-
-        except Exception:
-            pass
-
-    if visible:
-
-        try:
-            visible[-1].click(timeout=2000)
-            return True
-        except Exception:
-            pass
-
+    # Never treat another comment's Reply opener as our submit button.
     return False
 
 

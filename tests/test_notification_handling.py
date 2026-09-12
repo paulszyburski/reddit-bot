@@ -91,6 +91,52 @@ class NotificationHandlingTests(unittest.TestCase):
         self.handle()
         self.assertTrue(self.history.exists())
 
+    def test_malformed_ai_responses_remain_retryable(self):
+        for response in ('not json', '[]', 'null', {"action": "reply", "content": 123}):
+            with self.subTest(response=response):
+                self.ai.return_value = response
+                self.handle()
+                self.assertFalse(self.history.exists())
+
+    def test_notification_url_matches_post_id_despite_slug_and_query(self):
+        self.handle()
+        self.history.unlink()
+        conversations.handle_conversation_reply(
+            self.page, "https://www.reddit.com/r/test/comments/post/different_slug/new_reply/?context=3"
+        )
+        self.assertEqual(self.ai.call_count, 2)
+
+    def test_wrong_reply_target_is_rejected(self):
+        saved = json.loads(self.ongoing.read_text())
+        saved[0]["youAreTalkingTo"] = "expected_user"
+        self.ongoing.write_text(json.dumps(saved))
+        self.ai.return_value = {
+            "action": "reply", "replyTo": "t1_first", "content": "Answer",
+            "targetUsername": "user",
+        }
+        with patch.object(conversations, "_post_reply") as send:
+            self.handle()
+            send.assert_not_called()
+        self.assertFalse(self.history.exists())
+
+    def test_planning_skips_contacted_and_duplicate_posts(self):
+        source = Path(self.temp.name) / "posts.json"
+        contacted = Path(self.temp.name) / "contacted.txt"
+        planned = Path(self.temp.name) / "planned.json"
+        contacted.write_text("https://www.reddit.com/r/test/comments/old/title/\n")
+        source.write_text(json.dumps([
+            {"href": "/r/test/comments/old/title/?tracking=1"},
+            {"href": self.href},
+            {"href": self.href + "?tracking=1"},
+        ]))
+        self.ai.return_value = json.dumps({"action": "none", "content": ""})
+        with patch.object(conversations, "CONTACTED_PATH", contacted), \
+             patch.object(conversations, "PLANNED_PATH", planned):
+            decisions = conversations.plan_conversations(str(source), "bot", {"name": "test"})
+        self.ai.assert_called_once()
+        self.assertEqual(len(decisions), 1)
+        self.assertIn("lastChecked", decisions[0])
+
 
 if __name__ == "__main__":
     unittest.main()
