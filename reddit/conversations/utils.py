@@ -563,6 +563,21 @@ def _click_reply_submit(
     editor
 ):
 
+    if _try_click_reply_submit(page, editor):
+        return True
+
+    print("Reply submit unavailable; dismissing popup and retrying.")
+    viewport = page.evaluate(
+        "() => ({width: window.innerWidth, height: window.innerHeight})"
+    )
+    page.mouse.click(viewport["width"] / 2, viewport["height"] / 2)
+    page.wait_for_timeout(300)
+
+    return _try_click_reply_submit(page, editor)
+
+
+def _try_click_reply_submit(page, editor):
+
     scope = _find_composer_scope(
         editor
     )
@@ -589,7 +604,7 @@ def _click_reply_submit(
 
                     if button.is_enabled():
 
-                        button.click()
+                        button.click(timeout=2000)
 
                         return True
 
@@ -624,9 +639,11 @@ def _click_reply_submit(
 
     if visible:
 
-        visible[-1].click()
-
-        return True
+        try:
+            visible[-1].click(timeout=2000)
+            return True
+        except Exception:
+            pass
 
     return False
 
