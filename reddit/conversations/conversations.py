@@ -101,6 +101,8 @@ testers for:
 
 {json.dumps(app, ensure_ascii=False, indent=2)}
 
+the testers need to first go into the google group, then go into the opt in link and then into the app link!!!!!!!. give them sort of a guide
+
 Use ONLY information contained in this app object.
 
 You MAY use:
@@ -917,7 +919,10 @@ STEP 1:
 Join the testers Google Group.
 
 STEP 2:
-After joining the group, open the Google Play testing / opt-in link.
+After joining the group, open the Google Play opt-in link.
+
+STEP 3:
+Open the app link
 
 NEVER give the Play testing link first and the Google Group second.
 
