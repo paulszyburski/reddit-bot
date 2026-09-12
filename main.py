@@ -20,21 +20,11 @@ load_dotenv()
 USERNAME = os.getenv("REDDIT_USERNAME")
 
 communities = [
-    "https://www.reddit.com/r/AndroidClosedTesting/new/",
-    "https://www.reddit.com/r/TestersCommunity/new/",
-    "https://www.reddit.com/r/AndroidAppTesters/new/",
-    "https://www.reddit.com/r/AndroidTesting/new/",
-    "https://www.reddit.com/r/TestMyApp/new/",
-
-    # good additions
-    "https://www.reddit.com/r/AndroidAppTesting/new/",
-    "https://www.reddit.com/r/betatests/new/",
-    "https://www.reddit.com/r/betatesters/new/",
-    "https://www.reddit.com/r/alphaandbetausers/new/",
-
-    # broader communities — useful, but less focused
-    "https://www.reddit.com/r/appdev/new/",
-    "https://www.reddit.com/r/googleplay/new/",
+    "https://www.reddit.com/r/AndroidClosedTesting/",
+    "https://www.reddit.com/r/TestersCommunity/",
+    "https://www.reddit.com/r/AndroidAppTesters/",
+    "https://www.reddit.com/r/AndroidTesting/",
+    "https://www.reddit.com/r/TestMyApp/",
 ]
 
 with open("data/apps/apps.json", "r") as file:

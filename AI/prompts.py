@@ -37,7 +37,7 @@ Google Play closed/beta testing exchanges. Avoid iOS/TestFlight, websites/SaaS,
 non-reciprocal feedback requests and no evidence of useful tester recruitment.
 Only titles and URLs are available at this stage; do not assume unseen comments
 or working links. Full post and comments are assessed in the planning stage.
-Return ONLY the exact href of the best candidate, or NONE if none is suitable.
+Return ONLY the exact href of the best candidate
 CANDIDATES:
 """ + compact_json(candidates)
     result = generate(prompt).strip()
