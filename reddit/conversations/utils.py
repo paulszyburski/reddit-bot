@@ -411,6 +411,17 @@ def _editor_has_content(
         return False
 
 
+def _type_editor_text(editor, content):
+    """Type into the exact editor at a fixed pace; preserve multiline guides."""
+    editor.fill("")
+    lines = content.replace("\r\n", "\n").split("\n")
+    for index, line in enumerate(lines):
+        if index:
+            editor.press("Shift+Enter")
+        if line:
+            editor.press_sequentially(line, delay=40, timeout=max(30000, len(line) * 40 + 10000))
+
+
 def _fill_exact_editor(
     editor,
     content
@@ -438,9 +449,7 @@ def _fill_exact_editor(
 
     editor.click()
 
-    editor.fill(
-        content
-    )
+    _type_editor_text(editor, content)
 
     if not _editor_has_content(
         editor,
@@ -1008,9 +1017,7 @@ def _fill_top_level_editor(
         "Filling exact Reddit Lexical editor..."
     )
 
-    editor.fill(
-        content
-    )
+    _type_editor_text(editor, content)
 
     entered = (
         editor.inner_text()

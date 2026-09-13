@@ -5,6 +5,9 @@ from pathlib import Path
 
 from reddit.conversations.notifications import notification_state_key, mark_notification_handled
 from reddit.posts import scrape_post
+from reddit.conversations.posting_policy import (
+    posting_limit_reason, outreach_reason, eligible_reply_ids,
+)
 from AI.chatgpt import generate_response
 from AI.prompts import planning_prompt, follow_up_prompt, post_key
 from reddit.conversations.utils import (
@@ -94,6 +97,11 @@ def plan_conversations(file_path, our_username, app):
     with open(file_path, "r", encoding="utf-8") as file:
         data = json.load(file)
 
+    reason = posting_limit_reason(_load_json(ONGOING_PATH, []), our_username, new_conversation=True)
+    if reason:
+        print(f"Skipping outreach planning: {reason}")
+        return []
+
     contacted_posts = set()
     if CONTACTED_PATH.exists():
         with open(CONTACTED_PATH, "r", encoding="utf-8") as file:
@@ -101,6 +109,11 @@ def plan_conversations(file_path, our_username, app):
 
     decisions = []
     seen_posts = {post_key(href) for href in contacted_posts}
+    seen_posts.update(
+        post_key(item["postHref"])
+        for item in _load_json(PLANNED_PATH, [])
+        if item.get("postHref") and item.get("action") in ("reply", "comment")
+    )
 
     for post in data:
         href = post.get("href")
@@ -233,6 +246,13 @@ def execute_conversations(page, conversations=None):
 
         if not _valid_target(conversation, source_post, conversation.get("ourUsername", "")):
             print("Invalid saved reply target. Skipping.")
+            continue
+
+        reason = outreach_reason(ongoing, conversation) or posting_limit_reason(
+            ongoing, conversation.get("ourUsername", ""), new_conversation=True
+        )
+        if reason:
+            print(f"Outreach skipped: {reason}")
             continue
 
         if action == "reply":
@@ -411,6 +431,15 @@ def handle_conversation_reply(page, href):
         print(f"Incoming thread content already handled: {href}")
         return
 
+    eligible_ids = eligible_reply_ids(conversation, post)
+    if not eligible_ids:
+        print("Waiting for a new reply to our latest message.")
+        return
+    reason = posting_limit_reason(ongoing_conversations, conversation["ourUsername"])
+    if reason:
+        print(f"Follow-up deferred: {reason}")
+        return
+
     # Replace old thread with newest scrape
     conversation["thread"] = post
 
@@ -494,8 +523,15 @@ def handle_conversation_reply(page, href):
     # VALIDATE DECISION
     # ==================================================
 
-    if action not in ("reply", "comment"):
-        print(f"Unknown action: {action}")
+    if action != "reply" or reply_to not in eligible_ids:
+        print("Follow-up must answer a new reply to our latest message.")
+        return
+    previous_contents = {
+        " ".join(message.get("content", "").split()).casefold()
+        for message in conversation.get("ourMessages", [])
+    }
+    if " ".join(content.split()).casefold() in previous_contents:
+        print("Duplicate follow-up text suppressed.")
         return
 
     if not content:

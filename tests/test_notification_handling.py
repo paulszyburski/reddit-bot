@@ -25,10 +25,13 @@ class NotificationHandlingTests(unittest.TestCase):
         self.ongoing = Path(self.temp.name) / "ongoing.json"
         self.href = "https://www.reddit.com/r/test/comments/post/title/"
         self.comment = {"id": "t1_first", "username": "user", "content": "Hi", "replies": []}
-        self.post = {"comments": [self.comment]}
+        self.post = {"comments": [{"id": "t1_ours_before", "username": "bot",
+                                  "content": "Initial offer", "replies": [self.comment]}]}
         self.ongoing.write_text(json.dumps([{
             "postHref": self.href, "appName": "app", "ourUsername": "bot",
-            "thread": {}, "ourMessages": [],
+            "thread": {}, "youAreTalkingTo": "user",
+            "ourMessages": [{"content": "Initial offer", "sentAt": "2020-01-01T00:00:00+00:00",
+                             "replyTo": "t1_original"}],
         }]))
         self.page = Mock()
         self.ai = Mock(return_value={"action": "none"})
@@ -81,7 +84,7 @@ class NotificationHandlingTests(unittest.TestCase):
             self.handle()
             self.assertEqual(send.call_count, 2)
         saved = json.loads(self.ongoing.read_text())[0]
-        self.assertEqual(len(saved["ourMessages"]), 1)
+        self.assertEqual(len(saved["ourMessages"]), 2)
 
     def test_invalid_decision_is_retryable(self):
         self.ai.return_value = {"action": "reply", "content": "", "replyTo": "t1_first"}
@@ -118,6 +121,41 @@ class NotificationHandlingTests(unittest.TestCase):
             self.handle()
             send.assert_not_called()
         self.assertFalse(self.history.exists())
+
+    def test_unrelated_reply_does_not_trigger_ai(self):
+        self.post = {"comments": [self.comment]}
+        self.handle()
+        self.ai.assert_not_called()
+        self.assertFalse(self.history.exists())
+
+    def test_cooldown_defers_notification_without_marking_handled(self):
+        saved = json.loads(self.ongoing.read_text())
+        saved[0]["ourMessages"][0]["sentAt"] = conversations.datetime.now(conversations.timezone.utc).isoformat()
+        self.ongoing.write_text(json.dumps(saved))
+        self.handle()
+        self.ai.assert_not_called()
+        self.assertFalse(self.history.exists())
+
+    def test_outreach_queue_and_restart_respect_send_interval(self):
+        source = Path(self.temp.name) / "queue_source.json"
+        planned = Path(self.temp.name) / "queue.json"
+        posts = []
+        queue = []
+        for index in range(2):
+            href = f"https://www.reddit.com/r/test/comments/post{index}/title/"
+            posts.append({"href": href, "username": f"new_user{index}"})
+            queue.append({"id": str(index), "postHref": href, "sourcePath": str(source),
+                          "action": "comment", "content": "An offer", "ourUsername": "bot",
+                          "targetUsername": f"new_user{index}"})
+        source.write_text(json.dumps(posts))
+        planned.write_text(json.dumps(queue))
+        with patch.object(conversations, "PLANNED_PATH", planned), \
+             patch.object(conversations, "_add_contacted_post"), \
+             patch.object(conversations, "_post_top_level_comment") as send:
+            conversations.execute_conversations(self.page)
+            conversations.execute_conversations(self.page)
+            send.assert_called_once()
+        self.assertEqual(len(json.loads(planned.read_text())), 1)
 
     def test_planning_skips_contacted_and_duplicate_posts(self):
         source = Path(self.temp.name) / "posts.json"

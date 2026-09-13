@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 
 import os
+import fcntl
 import time
 import json
 from pathlib import Path
@@ -11,6 +12,8 @@ from reddit.login import *
 from reddit.search import *
 from reddit.posts import *
 from reddit.conversations.conversations import *
+from reddit.conversations.conversations import _load_json
+from reddit.conversations.posting_policy import posting_limit_reason
 from reddit.conversations.notifications import *
 from AI.chatgpt import *
 from AI.prompts import select_post
@@ -52,7 +55,7 @@ def save_posts(posts):
 
     return file_path
 
-def main():
+def _run_main():
     with sync_playwright() as p:
 
         browser = p.chromium.launch(
@@ -65,10 +68,33 @@ def main():
 
         time.sleep(2)
 
+        notifications = scrape_notifications(page)
+
+        for notification in notifications:
+            href = notification.get("href", "")
+
+            if "/comments/" not in href:
+                continue
+
+
+
+            handle_conversation_reply(page, href)
+
+        # Resume deferred plans before paying to generate more outreach.
+        execute_conversations(page)
+
         for app in apps:
+            reason = posting_limit_reason(_load_json(ONGOING_PATH, []), USERNAME, new_conversation=True)
+            if reason:
+                print(f"Skipping new outreach: {reason}")
+                break
             best_posts = []
             contacted_path = Path("data/contacted_posts.txt")
             excluded_posts = set(contacted_path.read_text().splitlines()) if contacted_path.exists() else set()
+            excluded_posts.update(
+                item["postHref"] for item in _load_json(PLANNED_PATH, [])
+                if item.get("postHref") and item.get("action") in ("reply", "comment")
+            )
             for community in communities:
 
                 page.goto(community)
@@ -115,22 +141,22 @@ def main():
 
             execute_conversations(page, planned_convos)
 
-        notifications = scrape_notifications(page)
-
-        for notification in notifications:
-            href = notification.get("href", "")
-
-            if "/comments/" not in href:
-                continue
-
-            
-
-            handle_conversation_reply(page, href)
-            
         browser.close()
+
+def main():
+    # One process at a time so overlapping scheduled runs cannot bypass limits.
+    Path("data").mkdir(exist_ok=True)
+    with open("data/run.lock", "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("Another bot run is active; skipping this run.")
+            return
+        _run_main()
+
 
 if __name__ == "__main__":
 
     #main()
-
+    pass
 
