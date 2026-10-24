@@ -8,7 +8,6 @@ import types
 import unittest
 from unittest.mock import Mock, patch
 
-# Keep these tests independent of API credentials and network clients.
 chatgpt = types.ModuleType("AI.chatgpt")
 chatgpt.generate_response = Mock()
 with patch.dict(sys.modules, {"AI.chatgpt": chatgpt}):
@@ -25,14 +24,36 @@ class NotificationHandlingTests(unittest.TestCase):
         self.ongoing = Path(self.temp.name) / "ongoing.json"
         self.href = "https://www.reddit.com/r/test/comments/post/title/"
         self.comment = {"id": "t1_first", "username": "user", "content": "Hi", "replies": []}
-        self.post = {"comments": [{"id": "t1_ours_before", "username": "bot",
-                                  "content": "Initial offer", "replies": [self.comment]}]}
-        self.ongoing.write_text(json.dumps([{
-            "postHref": self.href, "appName": "app", "ourUsername": "bot",
-            "thread": {}, "youAreTalkingTo": "user",
-            "ourMessages": [{"content": "Initial offer", "sentAt": "2020-01-01T00:00:00+00:00",
-                             "replyTo": "t1_original"}],
-        }]))
+        self.post = {
+            "comments": [
+                {
+                    "id": "t1_ours_before",
+                    "username": "bot",
+                    "content": "Initial offer",
+                    "replies": [self.comment],
+                }
+            ]
+        }
+        self.ongoing.write_text(
+            json.dumps(
+                [
+                    {
+                        "postHref": self.href,
+                        "appName": "app",
+                        "ourUsername": "bot",
+                        "thread": {},
+                        "youAreTalkingTo": "user",
+                        "ourMessages": [
+                            {
+                                "content": "Initial offer",
+                                "sentAt": "2020-01-01T00:00:00+00:00",
+                                "replyTo": "t1_original",
+                            }
+                        ],
+                    }
+                ]
+            )
+        )
         self.page = Mock()
         self.ai = Mock(return_value={"action": "none"})
         for name, value in [
@@ -57,27 +78,40 @@ class NotificationHandlingTests(unittest.TestCase):
 
     def test_new_reply_at_same_url_is_processed(self):
         self.handle()
-        self.comment["replies"].append({
-            "id": "t1_next", "username": "user", "content": "Another question", "replies": [],
-        })
+        self.comment["replies"].append(
+            {
+                "id": "t1_next",
+                "username": "user",
+                "content": "Another question",
+                "replies": [],
+            }
+        )
         self.handle()
         self.assertEqual(self.ai.call_count, 2)
 
     def test_own_reply_and_ranking_do_not_create_new_event(self):
         key = notification_state_key(self.post, "bot", self.href)
         self.comment["score"] = 10
-        self.comment["replies"].append({
-            "id": "t1_ours", "username": "BOT", "content": "Answer", "replies": [],
-        })
+        self.comment["replies"].append(
+            {
+                "id": "t1_ours",
+                "username": "BOT",
+                "content": "Answer",
+                "replies": [],
+            }
+        )
         self.assertEqual(key, notification_state_key(self.post, "bot", self.href))
 
     def test_failed_send_is_retryable_and_success_is_deduplicated(self):
         self.ai.return_value = {
-            "action": "reply", "replyTo": "t1_first", "content": "Answer",
+            "action": "reply",
+            "replyTo": "t1_first",
+            "content": "Answer",
             "targetUsername": "user",
         }
-        with patch.object(conversations, "_find_reddit_comment", return_value=Mock()), \
-             patch.object(conversations, "_post_reply", side_effect=[RuntimeError("failed"), None]) as send:
+        with patch.object(conversations, "_find_reddit_comment", return_value=Mock()), patch.object(
+            conversations, "_post_reply", side_effect=[RuntimeError("failed"), None]
+        ) as send:
             self.handle()
             self.assertFalse(self.history.exists())
             self.handle()
@@ -95,7 +129,7 @@ class NotificationHandlingTests(unittest.TestCase):
         self.assertTrue(self.history.exists())
 
     def test_malformed_ai_responses_remain_retryable(self):
-        for response in ('not json', '[]', 'null', {"action": "reply", "content": 123}):
+        for response in ("not json", "[]", "null", {"action": "reply", "content": 123}):
             with self.subTest(response=response):
                 self.ai.return_value = response
                 self.handle()
@@ -105,7 +139,8 @@ class NotificationHandlingTests(unittest.TestCase):
         self.handle()
         self.history.unlink()
         conversations.handle_conversation_reply(
-            self.page, "https://www.reddit.com/r/test/comments/post/different_slug/new_reply/?context=3"
+            self.page,
+            "https://www.reddit.com/r/test/comments/post/different_slug/new_reply/?context=3",
         )
         self.assertEqual(self.ai.call_count, 2)
 
@@ -114,7 +149,9 @@ class NotificationHandlingTests(unittest.TestCase):
         saved[0]["youAreTalkingTo"] = "expected_user"
         self.ongoing.write_text(json.dumps(saved))
         self.ai.return_value = {
-            "action": "reply", "replyTo": "t1_first", "content": "Answer",
+            "action": "reply",
+            "replyTo": "t1_first",
+            "content": "Answer",
             "targetUsername": "user",
         }
         with patch.object(conversations, "_post_reply") as send:
@@ -130,7 +167,9 @@ class NotificationHandlingTests(unittest.TestCase):
 
     def test_cooldown_defers_notification_without_marking_handled(self):
         saved = json.loads(self.ongoing.read_text())
-        saved[0]["ourMessages"][0]["sentAt"] = conversations.datetime.now(conversations.timezone.utc).isoformat()
+        saved[0]["ourMessages"][0]["sentAt"] = conversations.datetime.now(
+            conversations.timezone.utc
+        ).isoformat()
         self.ongoing.write_text(json.dumps(saved))
         self.handle()
         self.ai.assert_not_called()
@@ -144,14 +183,22 @@ class NotificationHandlingTests(unittest.TestCase):
         for index in range(2):
             href = f"https://www.reddit.com/r/test/comments/post{index}/title/"
             posts.append({"href": href, "username": f"new_user{index}"})
-            queue.append({"id": str(index), "postHref": href, "sourcePath": str(source),
-                          "action": "comment", "content": "An offer", "ourUsername": "bot",
-                          "targetUsername": f"new_user{index}"})
+            queue.append(
+                {
+                    "id": str(index),
+                    "postHref": href,
+                    "sourcePath": str(source),
+                    "action": "comment",
+                    "content": "An offer",
+                    "ourUsername": "bot",
+                    "targetUsername": f"new_user{index}",
+                }
+            )
         source.write_text(json.dumps(posts))
         planned.write_text(json.dumps(queue))
-        with patch.object(conversations, "PLANNED_PATH", planned), \
-             patch.object(conversations, "_add_contacted_post"), \
-             patch.object(conversations, "_post_top_level_comment") as send:
+        with patch.object(conversations, "PLANNED_PATH", planned), patch.object(
+            conversations, "_add_contacted_post"
+        ), patch.object(conversations, "_post_top_level_comment") as send:
             conversations.execute_conversations(self.page)
             conversations.execute_conversations(self.page)
             send.assert_called_once()
@@ -162,14 +209,19 @@ class NotificationHandlingTests(unittest.TestCase):
         contacted = Path(self.temp.name) / "contacted.txt"
         planned = Path(self.temp.name) / "planned.json"
         contacted.write_text("https://www.reddit.com/r/test/comments/old/title/\n")
-        source.write_text(json.dumps([
-            {"href": "/r/test/comments/old/title/?tracking=1"},
-            {"href": self.href},
-            {"href": self.href + "?tracking=1"},
-        ]))
+        source.write_text(
+            json.dumps(
+                [
+                    {"href": "/r/test/comments/old/title/?tracking=1"},
+                    {"href": self.href},
+                    {"href": self.href + "?tracking=1"},
+                ]
+            )
+        )
         self.ai.return_value = json.dumps({"action": "none", "content": ""})
-        with patch.object(conversations, "CONTACTED_PATH", contacted), \
-             patch.object(conversations, "PLANNED_PATH", planned):
+        with patch.object(conversations, "CONTACTED_PATH", contacted), patch.object(
+            conversations, "PLANNED_PATH", planned
+        ):
             decisions = conversations.plan_conversations(str(source), "bot", {"name": "test"})
         self.ai.assert_called_once()
         self.assertEqual(len(decisions), 1)

@@ -1,4 +1,3 @@
-"""Local posting limits based on saved successful messages, shared across apps."""
 from datetime import datetime, timedelta, timezone
 
 from AI.prompts import post_key
@@ -25,7 +24,6 @@ def posting_limit_reason(history, our_username, *, new_conversation=False, now=N
         if (conversation.get("ourUsername") or "").casefold() != our_username.casefold():
             continue
         messages = conversation.get("ourMessages") or []
-        # Legacy records may contain only the last execution timestamp.
         dates = [_timestamp(message.get("sentAt")) for message in messages]
         if not dates:
             dates = [_timestamp(conversation.get("executedAt"))]
@@ -35,7 +33,10 @@ def posting_limit_reason(history, our_username, *, new_conversation=False, now=N
         starts.append(min(dates))
     if len([date for date in sent if date > cutoff]) >= MAX_MESSAGES:
         return "Rolling 24-hour message limit reached."
-    if new_conversation and len([date for date in starts if date > cutoff]) >= MAX_NEW_CONVERSATIONS:
+    if (
+        new_conversation
+        and len([date for date in starts if date > cutoff]) >= MAX_NEW_CONVERSATIONS
+    ):
         return "Rolling 24-hour new-conversation limit reached."
     if sent and now - max(sent) < MIN_SEND_INTERVAL:
         return "Waiting for the 30-minute interval between messages."
@@ -50,18 +51,15 @@ def outreach_reason(history, decision):
             continue
         if post_key(conversation.get("postHref") or "") == post_key(decision.get("postHref") or ""):
             return "Already started a conversation under this post."
-        previous_target = conversation.get("youAreTalkingTo") or conversation.get("targetUsername") or ""
+        previous_target = (
+            conversation.get("youAreTalkingTo") or conversation.get("targetUsername") or ""
+        )
         if target and previous_target.casefold() == target:
             return "Already approached this person; continue the existing conversation only."
     return None
 
 
 def eligible_reply_ids(conversation, post):
-    """Accept only target replies descended from our latest saved message.
-
-    Reddit ranking is not chronological. Follow the tree rather than list order.
-    If that message is absent from the scrape, wait instead of guessing.
-    """
     messages = conversation.get("ourMessages") or []
     if not messages:
         return set()

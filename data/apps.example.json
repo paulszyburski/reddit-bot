@@ -1,0 +1,10 @@
+[
+    {
+        "name": "Example App",
+        "description": "Short description of the app",
+        "GoogleGroupLink": "https://groups.google.com/g/example",
+        "OptInLink": "https://play.google.com/apps/testing/example",
+        "AppLink": "https://play.google.com/store/apps/details?id=com.example.app",
+        "email(if they ask for it)": "contact@example.com"
+    }
+]

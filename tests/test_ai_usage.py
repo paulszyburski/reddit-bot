@@ -21,21 +21,36 @@ class AIUsageTests(unittest.TestCase):
 
     def test_empty_candidates_need_no_ai_call(self):
         generate = Mock()
-        self.assertIsNone(select_post({"Old": "/comments/old/title"}, ["/comments/old/title"], generate))
+        self.assertIsNone(
+            select_post({"Old": "/comments/old/title"}, ["/comments/old/title"], generate)
+        )
         generate.assert_not_called()
 
     def test_none_or_invented_url_is_not_navigated_to(self):
         for response in ("NONE", "https://example.com", "/comments/other/title"):
             with self.subTest(response=response):
-                self.assertIsNone(select_post({"Test": "/comments/new/title"}, [], Mock(return_value=response)))
+                self.assertIsNone(
+                    select_post({"Test": "/comments/new/title"}, [], Mock(return_value=response))
+                )
 
     def test_compact_context_preserves_nested_replies_history_and_app_links(self):
-        post = {"comments": [{"id": "one", "content": "parent", "replies": [
-            {"id": "two", "content": "I joined the group", "replies": []}
-        ]}]}
+        post = {
+            "comments": [
+                {
+                    "id": "one",
+                    "content": "parent",
+                    "replies": [{"id": "two", "content": "I joined the group", "replies": []}],
+                }
+            ]
+        }
         app = {"name": "test", "GoogleGroupLink": "https://groups.google.com/g/test"}
-        conversation = {"ourUsername": "bot", "youAreTalkingTo": "tester", "thread": post,
-                        "ourMessages": [{"content": "Earlier message"}], "sourcePath": "internal/path"}
+        conversation = {
+            "ourUsername": "bot",
+            "youAreTalkingTo": "tester",
+            "thread": post,
+            "ourMessages": [{"content": "Earlier message"}],
+            "sourcePath": "internal/path",
+        }
         prompt = follow_up_prompt(conversation, app)
         data = json.loads(prompt.split("DATA:\n")[1])
         self.assertEqual(data["thread"], post)

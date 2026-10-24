@@ -6,7 +6,9 @@ from pathlib import Path
 from reddit.conversations.notifications import notification_state_key, mark_notification_handled
 from reddit.posts import scrape_post
 from reddit.conversations.posting_policy import (
-    posting_limit_reason, outreach_reason, eligible_reply_ids,
+    posting_limit_reason,
+    outreach_reason,
+    eligible_reply_ids,
 )
 from AI.chatgpt import generate_response
 from AI.prompts import planning_prompt, follow_up_prompt, post_key
@@ -19,9 +21,8 @@ from reddit.conversations.utils import (
     _add_contacted_post,
     _comment_permalink,
     _append_our_message_to_thread,
-    _update_existing_conversation
+    _update_existing_conversation,
 )
-
 
 PLANNED_PATH = Path("data/planned_conversations.json")
 ONGOING_PATH = Path("data/ongoing_conversations.json")
@@ -53,7 +54,6 @@ def _save_json(path, data):
         json.dump(data, file, ensure_ascii=False, indent=4)
 
     temp_path.replace(path)
-
 
 
 def _parse_decision(response):
@@ -155,9 +155,7 @@ def execute_conversations(page, conversations=None):
     ongoing = _load_json(ONGOING_PATH, [])
 
     already_executed = {
-        conversation.get("id")
-        for conversation in ongoing
-        if conversation.get("id")
+        conversation.get("id") for conversation in ongoing if conversation.get("id")
     }
 
     def add_message_to_thread(post, action, reply_to, message):
@@ -166,6 +164,7 @@ def execute_conversations(page, conversations=None):
             return True
 
         if action == "reply":
+
             def find_and_add(comments):
                 for comment in comments:
                     if comment.get("id") == reply_to:
@@ -235,10 +234,7 @@ def execute_conversations(page, conversations=None):
             continue
 
         if action == "reply":
-            target_comment = _find_comment_path(
-                source_post.get("comments", []),
-                reply_to
-            )
+            target_comment = _find_comment_path(source_post.get("comments", []), reply_to)
 
             if target_comment is None:
                 print(f"Could not find {reply_to} in source JSON.")
@@ -267,19 +263,13 @@ def execute_conversations(page, conversations=None):
         try:
             page.goto(destination, wait_until="domcontentloaded")
 
-            page.locator("shreddit-post").first.wait_for(
-                state="attached",
-                timeout=15000
-            )
+            page.locator("shreddit-post").first.wait_for(state="attached", timeout=15000)
 
             page.wait_for_timeout(1000)
 
             if action == "reply":
                 try:
-                    page.locator("shreddit-comment").first.wait_for(
-                        state="attached",
-                        timeout=10000
-                    )
+                    page.locator("shreddit-comment").first.wait_for(state="attached", timeout=10000)
                 except Exception:
                     pass
 
@@ -287,10 +277,7 @@ def execute_conversations(page, conversations=None):
                 try:
                     page.locator(
                         'faceplate-textarea-input[data-testid="trigger-button"]'
-                    ).first.wait_for(
-                        state="attached",
-                        timeout=10000
-                    )
+                    ).first.wait_for(state="attached", timeout=10000)
                 except Exception:
                     pass
 
@@ -330,41 +317,30 @@ def execute_conversations(page, conversations=None):
             "content": content,
             "replies": [],
             "isOurs": True,
-            "sentAt": executed_at
+            "sentAt": executed_at,
         }
 
-        added_to_thread = add_message_to_thread(
-            source_post,
-            action,
-            reply_to,
-            sent_message
-        )
+        added_to_thread = add_message_to_thread(source_post, action, reply_to, sent_message)
 
         if not added_to_thread:
-            print(
-                "WARNING: Message was sent, but could not "
-                "be inserted into saved thread."
-            )
+            print("WARNING: Message was sent, but could not " "be inserted into saved thread.")
 
         ongoing_conversation = {
             **conversation,
             "conversationStatus": "ACTIVE",
             "executionStatus": "EXECUTED",
             "executedAt": executed_at,
-
             "youAreTalkingTo": target_username,
-
             "thread": source_post,
-
             "ourMessages": [
                 {
                     "action": action,
                     "replyTo": reply_to,
                     "targetUsername": target_username,
                     "content": content,
-                    "sentAt": executed_at
+                    "sentAt": executed_at,
                 }
-            ]
+            ],
         }
 
         ongoing.append(ongoing_conversation)
@@ -372,11 +348,7 @@ def execute_conversations(page, conversations=None):
 
         _add_contacted_post(href)
 
-        planned = [
-            item
-            for item in planned
-            if item.get("id") != conversation_id
-        ]
+        planned = [item for item in planned if item.get("id") != conversation_id]
 
         _save_json(PLANNED_PATH, planned)
 
@@ -386,13 +358,9 @@ def execute_conversations(page, conversations=None):
         print("Successfully executed.")
         print()
 
+
 def handle_conversation_reply(page, href):
-    # Resolve the conversation before scraping its complete thread. Notification
-    # links may point at different comment permalinks under the same post.
-    ongoing_conversations = _load_json(
-        ONGOING_PATH,
-        []
-    )
+    ongoing_conversations = _load_json(ONGOING_PATH, [])
 
     conversations = [
         item
@@ -412,8 +380,7 @@ def handle_conversation_reply(page, href):
 
     app_name = conversation["appName"]
     app = next(
-        (item for item in _load_json("data/apps/apps.json", [])
-         if item.get("name") == app_name),
+        (item for item in _load_json("data/apps/apps.json", []) if item.get("name") == app_name),
         {"name": app_name},
     )
 
@@ -425,8 +392,6 @@ def handle_conversation_reply(page, href):
     handled = set()
     if CONTACTED_NOTIFICATIONS_PATH.exists():
         handled = set(CONTACTED_NOTIFICATIONS_PATH.read_text(encoding="utf-8").splitlines())
-    # Legacy URL entries cannot tell which reply was handled. Keep them as
-    # history, but never use them to block future replies in the same thread.
     if notification_key in handled:
         print(f"Incoming thread content already handled: {href}")
         return
@@ -440,19 +405,9 @@ def handle_conversation_reply(page, href):
         print(f"Follow-up deferred: {reason}")
         return
 
-    # Replace old thread with newest scrape
     conversation["thread"] = post
 
-    _save_json(
-        ONGOING_PATH,
-        ongoing_conversations
-    )
-
-    # ==================================================
-    # PREPARE CHATGPT PROMPT
-    # ==================================================
-
-
+    _save_json(ONGOING_PATH, ongoing_conversations)
 
     prompt = follow_up_prompt(conversation, app)
 
@@ -466,19 +421,9 @@ def handle_conversation_reply(page, href):
         return
 
     print()
-    print("AI DECISION:")
-    print(
-        json.dumps(
-            decision,
-            ensure_ascii=False,
-            indent=2
-        )
-    )
+    print("DECISION:")
+    print(json.dumps(decision, ensure_ascii=False, indent=2))
     print()
-
-    # ==================================================
-    # READ DECISION
-    # ==================================================
 
     action = decision.get("action")
     content = decision.get("content", "")
@@ -486,23 +431,12 @@ def handle_conversation_reply(page, href):
     target_username = decision.get("targetUsername")
 
     conversation["lastChecked"] = decision.get(
-        "lastChecked",
-        datetime.now(timezone.utc).isoformat()
+        "lastChecked", datetime.now(timezone.utc).isoformat()
     )
 
-    conversation["reason"] = decision.get(
-        "reason",
-        ""
-    )
+    conversation["reason"] = decision.get("reason", "")
 
-    conversation["confidence"] = decision.get(
-        "confidence",
-        0.0
-    )
-
-    # ==================================================
-    # NO ACTION
-    # ==================================================
+    conversation["confidence"] = decision.get("confidence", 0.0)
 
     if action == "none":
         print("No action required.")
@@ -510,18 +444,11 @@ def handle_conversation_reply(page, href):
         conversation["conversationStatus"] = "ACTIVE"
         conversation["executionStatus"] = "WAITING_FOR_REPLY"
 
-        _save_json(
-            ONGOING_PATH,
-            ongoing_conversations
-        )
+        _save_json(ONGOING_PATH, ongoing_conversations)
 
         mark_notification_handled(CONTACTED_NOTIFICATIONS_PATH, notification_key)
 
         return
-
-    # ==================================================
-    # VALIDATE DECISION
-    # ==================================================
 
     if action != "reply" or reply_to not in eligible_ids:
         print("Follow-up must answer a new reply to our latest message.")
@@ -548,15 +475,8 @@ def handle_conversation_reply(page, href):
         print("Conversation has no postHref.")
         return
 
-    # ==================================================
-    # OPEN REDDIT DESTINATION
-    # ==================================================
-
     if action == "reply":
-        destination = _comment_permalink(
-            post_href,
-            reply_to
-        )
+        destination = _comment_permalink(post_href, reply_to)
 
         print("Opening comment permalink:")
         print(destination)
@@ -568,28 +488,15 @@ def handle_conversation_reply(page, href):
         print(destination)
 
     try:
-        page.goto(
-            destination,
-            wait_until="domcontentloaded"
-        )
+        page.goto(destination, wait_until="domcontentloaded")
 
-        page.locator(
-            "shreddit-post"
-        ).first.wait_for(
-            state="attached",
-            timeout=15000
-        )
+        page.locator("shreddit-post").first.wait_for(state="attached", timeout=15000)
 
         page.wait_for_timeout(1000)
 
         if action == "reply":
             try:
-                page.locator(
-                    "shreddit-comment"
-                ).first.wait_for(
-                    state="attached",
-                    timeout=10000
-                )
+                page.locator("shreddit-comment").first.wait_for(state="attached", timeout=10000)
             except Exception:
                 pass
 
@@ -597,10 +504,7 @@ def handle_conversation_reply(page, href):
             try:
                 page.locator(
                     'faceplate-textarea-input[data-testid="trigger-button"]'
-                ).first.wait_for(
-                    state="attached",
-                    timeout=10000
-                )
+                ).first.wait_for(state="attached", timeout=10000)
             except Exception:
                 pass
 
@@ -608,49 +512,23 @@ def handle_conversation_reply(page, href):
         print(f"Failed opening Reddit: {e}")
         return
 
-    # ==================================================
-    # SEND REDDIT MESSAGE
-    # ==================================================
-
     try:
         if action == "reply":
-            print(
-                f"Replying to {reply_to} "
-                f"({target_username})"
-            )
+            print(f"Replying to {reply_to} " f"({target_username})")
 
-            if _find_reddit_comment(
-                page,
-                reply_to
-            ) is None:
-                print(
-                    "Comment not loaded on permalink. "
-                    "Trying main post..."
-                )
+            if _find_reddit_comment(page, reply_to) is None:
+                print("Comment not loaded on permalink. " "Trying main post...")
 
-                page.goto(
-                    post_href,
-                    wait_until="domcontentloaded"
-                )
+                page.goto(post_href, wait_until="domcontentloaded")
 
                 page.wait_for_timeout(1500)
 
-            _post_reply(
-                page,
-                reply_to,
-                content
-            )
+            _post_reply(page, reply_to, content)
 
         else:
-            print(
-                f"Writing top-level comment "
-                f"to {target_username}"
-            )
+            print(f"Writing top-level comment " f"to {target_username}")
 
-            _post_top_level_comment(
-                page,
-                content
-            )
+            _post_top_level_comment(page, content)
 
         page.wait_for_timeout(1200)
 
@@ -661,29 +539,16 @@ def handle_conversation_reply(page, href):
         print()
         return
 
-    # ==================================================
-    # MESSAGE WAS SUCCESSFULLY SENT
-    # ==================================================
-
-    executed_at = datetime.now(
-        timezone.utc
-    ).isoformat()
+    executed_at = datetime.now(timezone.utc).isoformat()
 
     sent_message = {
         "id": None,
-        "username": conversation.get(
-            "ourUsername",
-            "OUR_ACCOUNT"
-        ),
+        "username": conversation.get("ourUsername", "OUR_ACCOUNT"),
         "content": content,
         "replies": [],
         "isOurs": True,
-        "sentAt": executed_at
+        "sentAt": executed_at,
     }
-
-    # ==================================================
-    # ADD OUR NEW MESSAGE TO SAVED THREAD
-    # ==================================================
 
     def add_message_to_thread(comments):
         if action == "comment":
@@ -692,36 +557,19 @@ def handle_conversation_reply(page, href):
 
         for comment in comments:
             if comment.get("id") == reply_to:
-                comment.setdefault(
-                    "replies",
-                    []
-                ).append(sent_message)
+                comment.setdefault("replies", []).append(sent_message)
 
                 return True
 
-            if add_message_to_thread(
-                comment.get("replies", [])
-            ):
+            if add_message_to_thread(comment.get("replies", [])):
                 return True
 
         return False
 
-    added_to_thread = add_message_to_thread(
-        conversation["thread"].setdefault(
-            "comments",
-            []
-        )
-    )
+    added_to_thread = add_message_to_thread(conversation["thread"].setdefault("comments", []))
 
     if not added_to_thread:
-        print(
-            "WARNING: Message was sent, but could "
-            "not be inserted into saved thread."
-        )
-
-    # ==================================================
-    # UPDATE SAME ONGOING CONVERSATION
-    # ==================================================
+        print("WARNING: Message was sent, but could " "not be inserted into saved thread.")
 
     conversation["action"] = action
     conversation["replyTo"] = reply_to
@@ -734,25 +582,17 @@ def handle_conversation_reply(page, href):
 
     conversation["youAreTalkingTo"] = target_username
 
-    conversation.setdefault(
-        "ourMessages",
-        []
-    ).append({
-        "action": action,
-        "replyTo": reply_to,
-        "targetUsername": target_username,
-        "content": content,
-        "sentAt": executed_at
-    })
-
-    # ==================================================
-    # SAVE ONGOING JSON
-    # ==================================================
-
-    _save_json(
-        ONGOING_PATH,
-        ongoing_conversations
+    conversation.setdefault("ourMessages", []).append(
+        {
+            "action": action,
+            "replyTo": reply_to,
+            "targetUsername": target_username,
+            "content": content,
+            "sentAt": executed_at,
+        }
     )
+
+    _save_json(ONGOING_PATH, ongoing_conversations)
 
     mark_notification_handled(CONTACTED_NOTIFICATIONS_PATH, notification_key)
 

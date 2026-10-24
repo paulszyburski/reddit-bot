@@ -14,7 +14,9 @@ class ReplySubmitTests(unittest.TestCase):
         page.evaluate.return_value = {"width": 1200, "height": 800}
         editor = Mock()
         scope = Mock()
-        scope.locator.side_effect = lambda selector: "scoped" if selector == 'button[type="submit"]' else "other"
+        scope.locator.side_effect = lambda selector: (
+            "scoped" if selector == 'button[type="submit"]' else "other"
+        )
         page.get_by_role.return_value = "global"
 
         def visible(locator):
@@ -22,8 +24,9 @@ class ReplySubmitTests(unittest.TestCase):
                 return [button] if locator == "scoped" else []
             return [Mock()] if page.mouse.click.called else []
 
-        with patch.object(utils, "_find_composer_scope", return_value=scope), \
-             patch.object(utils, "_visible_elements", side_effect=visible):
+        with patch.object(utils, "_find_composer_scope", return_value=scope), patch.object(
+            utils, "_visible_elements", side_effect=visible
+        ):
             result = utils._click_reply_submit(page, editor)
         return result, page
 

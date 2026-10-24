@@ -3,7 +3,6 @@ import json
 
 
 def notification_state_key(post, our_username, post_href):
-    """Identify incoming thread content, excluding our replies and volatile UI data."""
     incoming = []
 
     def collect(comments):
@@ -11,21 +10,25 @@ def notification_state_key(post, our_username, post_href):
             if not comment.get("isOurs") and (
                 (comment.get("username") or "").casefold() != our_username.casefold()
             ):
-                incoming.append({
-                    "id": comment.get("id"),
-                    "username": comment.get("username"),
-                    "content": comment.get("content"),
-                })
+                incoming.append(
+                    {
+                        "id": comment.get("id"),
+                        "username": comment.get("username"),
+                        "content": comment.get("content"),
+                    }
+                )
             collect(comment.get("replies", []))
 
     collect(post.get("comments", []))
-    # Sorting prevents Reddit's comment ranking from creating a new event.
     comments = sorted(json.dumps(item, sort_keys=True) for item in incoming)
-    state = json.dumps({
-        "postHref": post_href.rstrip("/"),
-        "ourUsername": our_username.casefold(),
-        "comments": comments,
-    }, sort_keys=True)
+    state = json.dumps(
+        {
+            "postHref": post_href.rstrip("/"),
+            "ourUsername": our_username.casefold(),
+            "comments": comments,
+        },
+        sort_keys=True,
+    )
     return "thread-v1:" + hashlib.sha256(state.encode("utf-8")).hexdigest()
 
 
@@ -36,33 +39,13 @@ def mark_notification_handled(path, key):
 
 
 def scrape_notifications(page, max_scrolls=5):
-    """
-    Opens Reddit notifications and scrapes the notifications currently available.
+    page.goto("https://www.reddit.com/notifications", wait_until="domcontentloaded")
 
-    Args:
-        page: Playwright Page object. Must already be logged into Reddit.
-        max_scrolls: How many times to scroll down to load older notifications.
-
-    Returns:
-        list[dict]
-    """
-
-    page.goto(
-        "https://www.reddit.com/notifications",
-        wait_until="domcontentloaded"
-    )
-
-    # Give Reddit's JS a moment to render notifications
     try:
-        page.locator("notification-item").first.wait_for(
-            state="attached",
-            timeout=10_000
-        )
+        page.locator("notification-item").first.wait_for(state="attached", timeout=10_000)
     except Exception:
-        # Could simply mean there are no notifications
         pass
 
-    # Load some older notifications
     previous_count = 0
 
     for _ in range(max_scrolls):
@@ -84,17 +67,11 @@ def scrape_notifications(page, max_scrolls=5):
     for i in range(notifications.count()):
         notification = notifications.nth(i)
 
-        # -------------------------
-        # Full visible notification text
-        # -------------------------
         try:
             text = notification.inner_text().strip()
         except Exception:
             text = ""
 
-        # -------------------------
-        # Find relevant link
-        # -------------------------
         href = ""
 
         links = notification.locator("a[href]")
@@ -106,7 +83,6 @@ def scrape_notifications(page, max_scrolls=5):
                 if not candidate:
                     continue
 
-                # Prefer actual Reddit post/comment links
                 if "/comments/" in candidate:
                     href = candidate
                     break
@@ -120,9 +96,6 @@ def scrape_notifications(page, max_scrolls=5):
         if href and href.startswith("/"):
             href = "https://www.reddit.com" + href
 
-        # -------------------------
-        # Timestamp
-        # -------------------------
         timestamp = ""
 
         time_element = notification.locator("time").first
@@ -130,20 +103,14 @@ def scrape_notifications(page, max_scrolls=5):
         if time_element.count():
             try:
                 timestamp = (
-                    time_element.get_attribute("datetime")
-                    or time_element.inner_text().strip()
+                    time_element.get_attribute("datetime") or time_element.inner_text().strip()
                 )
             except Exception:
                 pass
 
-        # -------------------------
-        # Username
-        # -------------------------
         username = ""
 
-        user_link = notification.locator(
-            "a[href*='/user/'], a[href*='/u/']"
-        ).first
+        user_link = notification.locator("a[href*='/user/'], a[href*='/u/']").first
 
         if user_link.count():
             try:
@@ -151,11 +118,6 @@ def scrape_notifications(page, max_scrolls=5):
             except Exception:
                 pass
 
-        results.append({
-            "text": text,
-            "username": username,
-            "timestamp": timestamp,
-            "href": href
-        })
+        results.append({"text": text, "username": username, "timestamp": timestamp, "href": href})
 
     return results
